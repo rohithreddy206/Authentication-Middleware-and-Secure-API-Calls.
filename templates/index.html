@@ -23,6 +23,10 @@
     .error-text { color: #d9534f; font-size: 0.9em; margin-top: 4px; }
     .msg-yellow { background: #fff3cd !important; color: #856404 !important; }
     .msg-red { background: #f8d7da !important; color: #721c24 !important; }
+    .btn-details { background:#17a2b8; }
+    .btn-details:hover { background:#117488; }
+    .btn-subjects { background:#198754; }
+    .btn-subjects:hover { background:#12623d; }
   </style>
 </head>
 <body>
@@ -83,14 +87,18 @@
 
   <script>
     // Redirect to login if not authenticated
-    if (!localStorage.getItem('security_token')) {
+    if (!(localStorage.getItem('SECURITY_TOKEN') || localStorage.getItem('security_token'))) {
       window.location.href = '/login';
+    }
+
+    function getToken() {
+      return localStorage.getItem('SECURITY_TOKEN') || localStorage.getItem('security_token');
     }
 
     // Helper for authenticated API requests
     function authFetch(url, options={}) {
       options.headers = options.headers || {};
-      options.headers['Authorization'] = 'Bearer ' + localStorage.getItem('security_token');
+      options.headers['Authorization'] = 'Bearer ' + getToken();
       return fetch(url, options);
     }
 
@@ -136,6 +144,8 @@
           <td style="text-align:center;">
             <button class="btn-edit">Edit</button>
             <button class="btn-delete">Delete</button>
+            <button class="btn-details" onclick="window.location='/students/${s.id}'">Details</button>
+            <button class="btn-subjects" onclick="window.location='/students/${s.id}/subjects'">Subjects</button>
           </td>
         `;
         tbody.appendChild(row);

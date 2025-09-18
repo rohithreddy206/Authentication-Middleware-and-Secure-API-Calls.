@@ -20,6 +20,25 @@ def create_db():
             email TEXT UNIQUE NOT NULL
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS tblSubject(
+            id INTEGER PRIMARY KEY,
+            name TEXT UNIQUE NOT NULL
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS tblStudentSubject(
+            student_id INTEGER NOT NULL,
+            subject_id INTEGER NOT NULL,
+            PRIMARY KEY (student_id, subject_id),
+            FOREIGN KEY(student_id) REFERENCES students(id) ON DELETE CASCADE,
+            FOREIGN KEY(subject_id) REFERENCES tblSubject(id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("SELECT COUNT(1) c FROM tblSubject")
+    if cursor.fetchone()["c"] == 0:
+        cursor.executemany("INSERT INTO tblSubject (name) VALUES (?)",
+                           [("Mathematics",), ("Physics",), ("Chemistry",), ("Biology",), ("History",)])
     conn.commit()
     cursor.close()
     conn.close()

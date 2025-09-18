@@ -7,7 +7,6 @@ from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 from dotenv import load_dotenv
 
-
 from database import create_db
 from api import students
 from middlewares.auth import auth_middleware
@@ -34,9 +33,14 @@ else:
 # FastAPI instance
 app = FastAPI(title="Student Registration API")
 
-# Add auth middleware
-# Only apply middleware to API routes, not to /login or /
-app.middleware("http")(auth_middleware)
+# Replace previous blanket middleware with selective one
+@app.middleware("http")
+async def selective_auth(request, call_next):
+    path = request.url.path
+    # Protect only API endpoints
+    if path.startswith("/api/"):
+        return await auth_middleware(request, call_next)
+    return await call_next(request)
 
 # Enable CORS for frontend
 app.add_middleware(
@@ -58,8 +62,32 @@ templates = Jinja2Templates(directory="templates")
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request, "heading": APP_HEADING, "security_token": SECURITY_TOKEN})
+    return templates.TemplateResponse(
+        "index.html",
+        {"request": request, "heading": APP_HEADING, "security_token": SECURITY_TOKEN}
+    )
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     return templates.TemplateResponse("login.html", {"request": request})
+
+@app.get("/students/{student_id}", response_class=HTMLResponse)
+async def student_detail_page(student_id: int, request: Request):
+    return templates.TemplateResponse(
+        "student_detail.html",
+        {"request": request, "student_id": student_id, "heading": APP_HEADING}
+    )
+
+@app.get("/student/{student_id}/subjects", response_class=HTMLResponse)
+async def student_subjects_page(student_id: int, request: Request):
+    return templates.TemplateResponse(
+        "student_subjects.html",
+        {"request": request, "student_id": student_id, "heading": APP_HEADING}
+    )
+
+@app.get("/students/{student_id}/subjects", response_class=HTMLResponse)
+async def student_subjects_page_plural(student_id: int, request: Request):
+    return templates.TemplateResponse(
+        "student_subjects.html",
+        {"request": request, "student_id": student_id, "heading": APP_HEADING}
+    )

@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException
 from typing import List
 
 from database import get_db_connection
-from models import StudentCreate, StudentUpdate, StudentOut
+from models import StudentCreate, StudentUpdate, StudentOut, StudentWithSubjects, SubjectOut, SubjectIds
 
 router = APIRouter()
 
@@ -91,3 +91,95 @@ def delete_student(student_id: int):
         raise HTTPException(status_code=404, detail="Student not found")
 
     return {"success": True, "message": "Student deleted"}
+
+# --- Read student with subjects ---
+@router.get("/{student_id}", response_model=StudentWithSubjects)
+def get_student_with_subjects(student_id: int):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT id, first_name, last_name, number AS phone, birthdate, email FROM students WHERE id=?", (student_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    cur.execute("""
+        SELECT s.id, s.name
+        FROM tblSubject s
+        JOIN tblStudentSubject ss ON ss.subject_id = s.id
+        WHERE ss.student_id=?
+        ORDER BY s.name
+    """, (student_id,))
+    enrolled = [SubjectOut(**dict(r)) for r in cur.fetchall()]
+
+    cur.execute("""
+        SELECT id, name FROM tblSubject
+        WHERE id NOT IN (SELECT subject_id FROM tblStudentSubject WHERE student_id=?)
+        ORDER BY name
+    """, (student_id,))
+    available = [SubjectOut(**dict(r)) for r in cur.fetchall()]
+    cur.close(); conn.close()
+    return {**dict(row), "enrolled_subjects": enrolled, "available_subjects": available}
+
+@router.get("/{student_id}/subjects", response_model=list[SubjectOut])
+def get_student_subjects_only(student_id: int):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT 1 FROM students WHERE id=?", (student_id,))
+    if not cur.fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Student not found")
+    cur.execute("""
+        SELECT s.id, s.name
+        FROM tblSubject s
+        JOIN tblStudentSubject ss ON ss.subject_id = s.id
+        WHERE ss.student_id=?
+        ORDER BY s.name
+    """, (student_id,))
+    data = [SubjectOut(**dict(r)) for r in cur.fetchall()]
+    cur.close(); conn.close()
+    return data
+
+@router.post("/{student_id}/subjects", response_model=dict)
+def add_subjects_to_student(student_id: int, payload: SubjectIds):
+    if not payload.subject_ids:
+        raise HTTPException(status_code=400, detail="No subject IDs provided")
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT 1 FROM students WHERE id=?", (student_id,))
+    if not cur.fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Student not found")
+    placeholders = ",".join("?" * len(payload.subject_ids))
+    cur.execute(f"SELECT id FROM tblSubject WHERE id IN ({placeholders})", tuple(payload.subject_ids))
+    valid = {r["id"] for r in cur.fetchall()}
+    missing = set(payload.subject_ids) - valid
+    if missing:
+        conn.close()
+        raise HTTPException(status_code=400, detail=f"Invalid subject IDs: {sorted(missing)}")
+    added = 0
+    for sid in payload.subject_ids:
+        cur.execute("INSERT OR IGNORE INTO tblStudentSubject (student_id, subject_id) VALUES (?,?)", (student_id, sid))
+        if cur.rowcount:
+            added += 1
+    conn.commit()
+    cur.close(); conn.close()
+    return {"success": True, "added": added}
+
+@router.post("/{student_id}/subjects/remove", response_model=dict)
+def remove_subjects_from_student(student_id: int, payload: SubjectIds):
+    if not payload.subject_ids:
+        raise HTTPException(status_code=400, detail="No subject IDs provided")
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT 1 FROM students WHERE id=?", (student_id,))
+    if not cur.fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Student not found")
+    placeholders = ",".join("?" * len(payload.subject_ids))
+    cur.execute(f"DELETE FROM tblStudentSubject WHERE student_id=? AND subject_id IN ({placeholders})",
+                (student_id, *payload.subject_ids))
+    removed = cur.rowcount
+    conn.commit()
+    cur.close(); conn.close()
+    return {"success": True, "removed": removed}
